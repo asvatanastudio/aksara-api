@@ -1,19 +1,16 @@
 {
-  "name": "backend",
+  "name": "aksara-api-backend",
   "version": "1.0.0",
-  "description": "Server untuk aplikasi Organix",
-  "main": "server.js",
+  "description": "Backend API for Aksara Laserwork dashboard",
+  "main": "api/index.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node api/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
     "express": "^4.19.2",
-    "json-server": "^0.17.4",
-    "pg": "^8.16.3"
+    "cors": "^2.8.5",
+    "pg": "^8.12.0",
+    "dotenv": "^16.4.5"
   }
 }

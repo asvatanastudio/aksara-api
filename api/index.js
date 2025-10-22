@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
+// import bcrypt from 'bcryptjs'; // Anda harus menggunakan bcrypt untuk password hash!
 const app = express();
 
 // Konfigurasi Variabel Lingkungan
@@ -9,7 +10,6 @@ const DATABASE_URL = process.env.POSTGRES_DATABASE_URL;
 // --- KONFIGURASI KONEKSI DATABASE NEON ---
 if (!DATABASE_URL) {
   console.error("FATAL ERROR: POSTGRES_DATABASE_URL tidak ditemukan.");
-  // Server akan merespons 500 jika variabel ini hilang saat startup
 }
 
 const pool = new Pool({
@@ -21,7 +21,6 @@ const pool = new Pool({
 });
 
 // --- KONFIGURASI CORS (Paling Permisif untuk Debugging) ---
-// Origin: '*' diatur untuk memastikan browser tidak memblokir permintaan
 const corsOptions = {
   origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
@@ -32,17 +31,14 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Logging sederhana untuk konfirmasi startup
 console.log("Aksara API Serverless Function starting...");
 
-// --- ROUTE TEST (Untuk memastikan server merespons) ---
-// Akses: https://aksara-api.vercel.app/api/status
+// --- ROUTE TEST ---
 app.get("/api/status", (req, res) => {
   res.status(200).json({ status: "OK", message: "API is running successfully with CORS: *." });
 });
 
-// 🔥 PENTING: ROUTE PENDAFTARAN DENGAN LOGIKA KONEKSI NEON
-// Perhatikan: Endpoint frontend Anda memanggil /register, jadi rute di sini harus disesuaikan
+// 🔥 ROUTE 1: PENDAFTARAN
 app.post("/register", async (req, res) => {
   const { fullName, email, whatsapp, password } = req.body;
 
@@ -50,13 +46,16 @@ app.post("/register", async (req, res) => {
     return res.status(400).json({ message: "Email dan password wajib diisi." });
   }
 
+  // const hashedPassword = await bcrypt.hash(password, 10); // Gunakan ini saat bcrypt terinstal
+
   let client;
   try {
     client = await pool.connect();
 
-    // --- Coba koneksi ke database ---
-    // Ganti 'users' dan kolom sesuai dengan skema database Neon Anda
-    const result = await client.query("INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email", [fullName, email, whatsapp, password]);
+    const result = await client.query(
+      "INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email",
+      [fullName, email, whatsapp, password] // Gunakan hashedPassword setelah diimplementasikan
+    );
 
     res.status(201).json({
       message: "Registrasi berhasil!",
@@ -64,19 +63,49 @@ app.post("/register", async (req, res) => {
     });
   } catch (error) {
     console.error("Database or Server Error:", error);
-
-    // Error handling spesifik
     if (error.code === "23505") {
       return res.status(409).json({ message: "Email sudah terdaftar." });
     }
-
-    // 🔥 Jika ada error lain (seperti gagal koneksi/SSL), kita kirim 500
+    // Jika ada error lain (seperti gagal koneksi/SSL)
     res.status(500).json({ message: "Gagal memproses pendaftaran. Periksa Log Neon/Vercel." });
   } finally {
     if (client) client.release();
   }
 });
 
+// 🔥 ROUTE 2: LOGIN (Rute yang dipanggil frontend Anda)
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  let client;
+  try {
+    client = await pool.connect();
+    const userResult = await client.query("SELECT id, full_name, email, password_hash FROM users WHERE email = $1", [email]);
+
+    const user = userResult.rows[0];
+    if (!user) {
+      return res.status(401).json({ message: "Email atau password salah." });
+    }
+
+    // 🔥 Harusnya: const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    // Sekarang (sementara tanpa hash):
+    const passwordMatch = user.password_hash === password; // GANTI DENGAN LOGIKA HASH YANG BENAR
+
+    if (passwordMatch) {
+      return res.status(200).json({
+        message: "Login berhasil!",
+        user: { id: user.id, fullName: user.full_name, email: user.email },
+      });
+    } else {
+      return res.status(401).json({ message: "Email atau password salah." });
+    }
+  } catch (error) {
+    console.error("Login Error:", error);
+    res.status(500).json({ message: "Gagal memproses login. Error server." });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 // 🔥 EXPORT HANDLER UNTUK VERSEL SERVERLESS
-// Ini memberi tahu Vercel untuk menjalankan aplikasi Express ini
 module.exports = app;

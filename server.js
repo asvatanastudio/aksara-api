@@ -1,56 +1,51 @@
 const express = require("express");
 const cors = require("cors");
-const { Pool } = require("pg"); // Library untuk PostgreSQL
+const { Pool } = require("pg");
 const app = express();
 
 // Konfigurasi Variabel Lingkungan
-// Vercel akan secara otomatis mengisi process.env.POSTGRES_DATABASE_URL
 const DATABASE_URL = process.env.POSTGRES_DATABASE_URL;
 
 // --- KONFIGURASI KONEKSI DATABASE NEON ---
 if (!DATABASE_URL) {
-  console.error("FATAL ERROR: POSTGRES_DATABASE_URL tidak ditemukan. Server tidak dapat berjalan.");
-  // Di lingkungan Vercel, kita biarkan server crash jika variabel penting hilang
+  console.error("FATAL ERROR: POSTGRES_DATABASE_URL tidak ditemukan.");
+  // Server akan merespons 500 jika variabel ini hilang saat startup
 }
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  // 🔥 Wajib untuk Neon: Mengaktifkan SSL/TLS untuk koneksi aman dari server cloud
+  // 🔥 Wajib untuk Neon: Mengaktifkan SSL/TLS untuk koneksi aman
   ssl: {
-    rejectUnauthorized: false,
+    rejectUnauthorized: false, // Digunakan untuk lingkungan cloud seperti Vercel
   },
 });
 
-// --- KONFIGURASI CORS (Cross-Origin Resource Sharing) ---
-// Ganti URL 'https://dashboard-aksara.vercel.app' dengan domain frontend Anda
-const frontendUrl = "https://dashboard-aksara.vercel.app";
-
+// --- KONFIGURASI CORS (Paling Permisif untuk Debugging) ---
+// Origin: '*' diatur untuk memastikan browser tidak memblokir permintaan
 const corsOptions = {
-  origin: frontendUrl, // Hanya izinkan permintaan dari domain frontend Anda
+  origin: "*",
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
   credentials: true,
   optionsSuccessStatus: 200,
 };
 
-// Terapkan middleware
 app.use(cors(corsOptions));
-app.use(express.json()); // Middleware untuk parsing JSON body
+app.use(express.json());
 
-// Logging sederhana untuk konfirmasi startup (hanya muncul di logs Vercel)
-console.log("Serverless Function Aksara API starting...");
+// Logging sederhana untuk konfirmasi startup
+console.log("Aksara API Serverless Function starting...");
 
-// --- DEFINISI ROUTE API ---
-
-// Route Test Sederhana (Opsional, untuk memastikan server merespons)
+// --- ROUTE TEST (Untuk memastikan server merespons) ---
+// Akses: https://aksara-api.vercel.app/api/status
 app.get("/api/status", (req, res) => {
-  res.status(200).json({ status: "OK", message: "API is running successfully." });
+  res.status(200).json({ status: "OK", message: "API is running successfully with CORS: *." });
 });
 
-// Route Pendaftaran (Contoh dari frontend)
+// 🔥 PENTING: ROUTE PENDAFTARAN DENGAN LOGIKA KONEKSI NEON
+// Perhatikan: Endpoint frontend Anda memanggil /register, jadi rute di sini harus disesuaikan
 app.post("/register", async (req, res) => {
   const { fullName, email, whatsapp, password } = req.body;
 
-  // Periksa data input sederhana
   if (!email || !password) {
     return res.status(400).json({ message: "Email dan password wajib diisi." });
   }
@@ -59,12 +54,9 @@ app.post("/register", async (req, res) => {
   try {
     client = await pool.connect();
 
-    // 🔥 Lakukan logika registrasi dan hashing password di sini
-    // Ini adalah placeholder:
-    const result = await client.query(
-      "INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email",
-      [fullName, email, whatsapp, password] // Gunakan bcrypt untuk password hash!
-    );
+    // --- Coba koneksi ke database ---
+    // Ganti 'users' dan kolom sesuai dengan skema database Neon Anda
+    const result = await client.query("INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email", [fullName, email, whatsapp, password]);
 
     res.status(201).json({
       message: "Registrasi berhasil!",
@@ -72,47 +64,19 @@ app.post("/register", async (req, res) => {
     });
   } catch (error) {
     console.error("Database or Server Error:", error);
-    // Tangani error jika email sudah ada, dll.
+
+    // Error handling spesifik
     if (error.code === "23505") {
-      // PostgreSQL code for unique violation
       return res.status(409).json({ message: "Email sudah terdaftar." });
     }
-    res.status(500).json({ message: "Gagal memproses pendaftaran. Error server." });
+
+    // 🔥 Jika ada error lain (seperti gagal koneksi/SSL), kita kirim 500
+    res.status(500).json({ message: "Gagal memproses pendaftaran. Periksa Log Neon/Vercel." });
   } finally {
     if (client) client.release();
   }
 });
 
-// Route Login (Contoh)
-app.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-
-  let client;
-  try {
-    client = await pool.connect();
-    const userResult = await client.query("SELECT * FROM users WHERE email = $1", [email]);
-
-    const user = userResult.rows[0];
-    if (!user) {
-      return res.status(401).json({ message: "Email atau password salah." });
-    }
-
-    // 🔥 Lakukan perbandingan password (gunakan bcrypt.compare())
-    // Placeholder perbandingan:
-    if (user.password_hash === password) {
-      // GANTI DENGAN LOGIKA HASH YANG BENAR
-      return res.status(200).json({ message: "Login berhasil!", user: { id: user.id, fullName: user.full_name, email: user.email } });
-    } else {
-      return res.status(401).json({ message: "Email atau password salah." });
-    }
-  } catch (error) {
-    console.error("Login Error:", error);
-    res.status(500).json({ message: "Gagal memproses login. Error server." });
-  } finally {
-    if (client) client.release();
-  }
-});
-
-// 🔥 PENTING: EXPORT HANDLER UNTUK VERSEL SERVERLESS
-// Ini menggantikan app.listen(port)
+// 🔥 EXPORT HANDLER UNTUK VERSEL SERVERLESS
+// Ini memberi tahu Vercel untuk menjalankan aplikasi Express ini
 module.exports = app;

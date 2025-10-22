@@ -19,18 +19,23 @@ const pool = new Pool({
   },
 });
 
-// 🔥🔥🔥 PERBAIKAN: TEST KONEKSI OTOMATIS SAAT BOOTING 🔥🔥🔥
+// 🔥🔥🔥 PERBAIKAN: TEST KONEKSI OTOMATIS SAAT BOOTING (LOG LEBIH AGRESIF) 🔥🔥🔥
 async function testDbConnection() {
   let client;
   try {
     client = await pool.connect();
     console.log("SUCCESS: KONEKSI DATABASE NEON BERHASIL!");
   } catch (err) {
-    console.error("FATAL ERROR: KONEKSI NEON GAGAL! Detail:", err.message);
-    // Tambahkan detail error kredensial yang spesifik jika ada
+    // 🔥🔥 LOG DI SINI AKAN MENGUNGKAP APAKAH PASSWORD SALAH 🔥🔥
+    console.error("=================================================");
+    console.error("FATAL ERROR KONEKSI DB! Cek kredensial di Vercel.");
+    console.error(`Detail Error: ${err.message}`);
     if (err.message && err.message.includes("password authentication failed")) {
-      console.error("DEBUG: KREDENSIAL DB SALAH. Periksa username/password di Vercel.");
+      console.error("DEBUG: KREDENSIAL DB SALAH. Password atau Username salah!");
+    } else if (err.message && err.message.includes("ECONNREFUSED")) {
+      console.error("DEBUG: Koneksi ditolak. Cek IP Allow List atau URL Host Neon.");
     }
+    console.error("=================================================");
   } finally {
     if (client) client.release();
   }

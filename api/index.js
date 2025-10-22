@@ -19,6 +19,25 @@ const pool = new Pool({
   },
 });
 
+// 🔥🔥🔥 PERBAIKAN: TEST KONEKSI OTOMATIS SAAT BOOTING 🔥🔥🔥
+async function testDbConnection() {
+  let client;
+  try {
+    client = await pool.connect();
+    console.log("SUCCESS: KONEKSI DATABASE NEON BERHASIL!");
+  } catch (err) {
+    console.error("FATAL ERROR: KONEKSI NEON GAGAL! Detail:", err.message);
+    // Tambahkan detail error kredensial yang spesifik jika ada
+    if (err.message && err.message.includes("password authentication failed")) {
+      console.error("DEBUG: KREDENSIAL DB SALAH. Periksa username/password di Vercel.");
+    }
+  } finally {
+    if (client) client.release();
+  }
+}
+// Jalankan tes koneksi segera setelah Serverless Function dimulai
+testDbConnection();
+
 // --- KONFIGURASI CORS (Paling Permisif untuk Debugging) ---
 const corsOptions = {
   origin: "*",
@@ -35,8 +54,13 @@ console.log("Aksara API Serverless Function starting...");
 
 // --- ROUTE TEST ---
 // Akses: https://aksara-api.vercel.app/api/status
+app.get("/", (req, res) => {
+  res.status(200).json({
+    message: "Aksara API is running. Use /api/register for POST requests.",
+    version: "1.0",
+  });
+});
 app.get("/api/status", (req, res) => {
-  // Jika koneksi berhasil, ini akan merespons 200 OK
   res.status(200).json({ status: "OK", message: "API is running and ready for database connections." });
 });
 
@@ -66,7 +90,7 @@ app.post("/api/register", async (req, res) => {
       // Unique violation
       return res.status(409).json({ message: "Email sudah terdaftar." });
     }
-    // Jika crash database lain (SSL, koneksi, dll.)
+    // 🔥🔥 KITA MENGIRIM PESAN ERROR YANG LEBIH SPESIFIK KE KONSOL VERCEL
     res.status(500).json({ message: "Error server internal. Periksa kredensial DB." });
   } finally {
     if (client) client.release();
@@ -87,7 +111,6 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ message: "Email atau password salah." });
     }
 
-    // 🔥 Perbandingan password SEMENTARA (Karena kita tidak menggunakan bcrypt)
     const passwordMatch = user.password_hash === password;
 
     if (passwordMatch) {
@@ -106,8 +129,7 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// 🔥 ROUTE PLACEHOLDER UNTUK PENGAMBILAN DATA (Frontend akan memanggil ini setelah login)
-// Jika rute ini hilang, dashboard akan crash dengan Failed to Fetch
+// 🔥 ROUTE PLACEHOLDER
 app.get("/api/products", (req, res) => res.json([]));
 app.get("/api/projects", (req, res) => res.json([]));
 app.get("/api/teamMembers", (req, res) => res.json([]));

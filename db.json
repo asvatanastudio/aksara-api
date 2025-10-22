@@ -1,0 +1,65 @@
+{
+  "products": [
+    {
+      "id": 1,
+      "name": "Website E-Commerce",
+      "price": 15000000,
+      "qty": 10
+    },
+    {
+      "id": 2,
+      "name": "Aplikasi Kasir",
+      "price": 5000000,
+      "qty": 25
+    },
+    {
+      "id": 3,
+      "name": "Desain Logo",
+      "price": 1000000,
+      "qty": 45
+    }
+  ],
+  "projects": [
+    {
+      "id": 1,
+      "customer": "PT. Sejahtera",
+      "item": "Website E-Commerce",
+      "qty": 1,
+      "pic": "Deden",
+      "productId": 1,
+      "status": "Dibuat"
+    },
+    {
+      "customer": "deden",
+      "item": "Desain Logo",
+      "qty": 5,
+      "pic": "hana",
+      "productId": 3,
+      "status": "Diproses",
+      "id": 2
+    }
+  ],
+  "teamMembers": [
+    {
+      "id": "TM-001",
+      "name": "Deden Rahmat",
+      "address": "Garut",
+      "position": "Frontend Dev"
+    },
+    {
+      "id": "TM-002",
+      "name": "Nugraha",
+      "address": "Bandung",
+      "position": "Backend Dev"
+    }
+  ],
+  "users": [
+    {
+      "id": 1,
+      "fullName": "deden",
+      "email": "testajakali@gmail.com",
+      "whatsapp": "08123456",
+      "password": "@Deden90"
+    }
+  ]
+}

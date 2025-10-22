@@ -1,7 +1,6 @@
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
-// import bcrypt from 'bcryptjs'; // Anda harus menggunakan bcrypt untuk password hash!
 const app = express();
 
 // Konfigurasi Variabel Lingkungan
@@ -16,7 +15,7 @@ const pool = new Pool({
   connectionString: DATABASE_URL,
   // 🔥 Wajib untuk Neon: Mengaktifkan SSL/TLS untuk koneksi aman
   ssl: {
-    rejectUnauthorized: false, // Digunakan untuk lingkungan cloud seperti Vercel
+    rejectUnauthorized: false,
   },
 });
 
@@ -31,24 +30,17 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Logging sederhana untuk konfirmasi startup
 console.log("Aksara API Serverless Function starting...");
 
 // --- ROUTE TEST ---
 // Akses: https://aksara-api.vercel.app/api/status
-app.get("/api/status", async (req, res) => {
-  // Tambahkan koneksi DB test untuk memastikan Neon berfungsi
-  let client;
-  try {
-    client = await pool.connect();
-    client.release();
-    res.status(200).json({ status: "OK", db: "Connected", message: "API is running successfully." });
-  } catch (error) {
-    console.error("Status check failed to connect to DB:", error);
-    res.status(500).json({ status: "Error", db: "Failed", message: "Koneksi database gagal." });
-  }
+app.get("/api/status", (req, res) => {
+  // Jika koneksi berhasil, ini akan merespons 200 OK
+  res.status(200).json({ status: "OK", message: "API is running and ready for database connections." });
 });
 
-// 🔥 ROUTE 1: PENDAFTARAN (Berubah ke /api/register)
+// 🔥 ROUTE 1: PENDAFTARAN
 app.post("/api/register", async (req, res) => {
   const { fullName, email, whatsapp, password } = req.body;
 
@@ -60,24 +52,28 @@ app.post("/api/register", async (req, res) => {
   try {
     client = await pool.connect();
 
-    const result = await client.query("INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email", [fullName, email, whatsapp, password]);
+    // Pastikan skema pengguna sudah dibuat di Neon Console
+    const result = await client.query("INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email, full_name", [fullName, email, whatsapp, password]);
 
     res.status(201).json({
       message: "Registrasi berhasil!",
       user: result.rows[0],
     });
   } catch (error) {
-    console.error("Database or Server Error:", error);
+    console.error("Database or Server Error on /register:", error);
+
     if (error.code === "23505") {
+      // Unique violation
       return res.status(409).json({ message: "Email sudah terdaftar." });
     }
-    res.status(500).json({ message: "Gagal memproses pendaftaran. Error server internal." });
+    // Jika crash database lain (SSL, koneksi, dll.)
+    res.status(500).json({ message: "Error server internal. Periksa kredensial DB." });
   } finally {
     if (client) client.release();
   }
 });
 
-// 🔥 ROUTE 2: LOGIN (Berubah ke /api/login)
+// 🔥 ROUTE 2: LOGIN
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -91,6 +87,7 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ message: "Email atau password salah." });
     }
 
+    // 🔥 Perbandingan password SEMENTARA (Karena kita tidak menggunakan bcrypt)
     const passwordMatch = user.password_hash === password;
 
     if (passwordMatch) {
@@ -103,17 +100,17 @@ app.post("/api/login", async (req, res) => {
     }
   } catch (error) {
     console.error("Login Error:", error);
-    res.status(500).json({ message: "Gagal memproses login. Error server internal." });
+    res.status(500).json({ message: "Error server internal saat login." });
   } finally {
     if (client) client.release();
   }
 });
 
-// 🔥 ROUTE PENANGANAN ERROR UMUM EXPRESS (untuk menangkap error seperti 'fsPath')
-app.use((err, req, res, next) => {
-  console.error("UNCAUGHT EXPRESS ERROR:", err.stack);
-  res.status(500).json({ message: "Internal Server Error (Backend Crash)", detail: err.message });
-});
+// 🔥 ROUTE PLACEHOLDER UNTUK PENGAMBILAN DATA (Frontend akan memanggil ini setelah login)
+// Jika rute ini hilang, dashboard akan crash dengan Failed to Fetch
+app.get("/api/products", (req, res) => res.json([]));
+app.get("/api/projects", (req, res) => res.json([]));
+app.get("/api/teamMembers", (req, res) => res.json([]));
 
 // 🔥 EXPORT HANDLER UNTUK VERSEL SERVERLESS
 module.exports = app;

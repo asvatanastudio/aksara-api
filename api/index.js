@@ -34,28 +34,33 @@ app.use(express.json());
 console.log("Aksara API Serverless Function starting...");
 
 // --- ROUTE TEST ---
-app.get("/api/status", (req, res) => {
-  res.status(200).json({ status: "OK", message: "API is running successfully with CORS: *." });
+// Akses: https://aksara-api.vercel.app/api/status
+app.get("/api/status", async (req, res) => {
+  // Tambahkan koneksi DB test untuk memastikan Neon berfungsi
+  let client;
+  try {
+    client = await pool.connect();
+    client.release();
+    res.status(200).json({ status: "OK", db: "Connected", message: "API is running successfully." });
+  } catch (error) {
+    console.error("Status check failed to connect to DB:", error);
+    res.status(500).json({ status: "Error", db: "Failed", message: "Koneksi database gagal." });
+  }
 });
 
-// 🔥 ROUTE 1: PENDAFTARAN
-app.post("/register", async (req, res) => {
+// 🔥 ROUTE 1: PENDAFTARAN (Berubah ke /api/register)
+app.post("/api/register", async (req, res) => {
   const { fullName, email, whatsapp, password } = req.body;
 
   if (!email || !password) {
     return res.status(400).json({ message: "Email dan password wajib diisi." });
   }
 
-  // const hashedPassword = await bcrypt.hash(password, 10); // Gunakan ini saat bcrypt terinstal
-
   let client;
   try {
     client = await pool.connect();
 
-    const result = await client.query(
-      "INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email",
-      [fullName, email, whatsapp, password] // Gunakan hashedPassword setelah diimplementasikan
-    );
+    const result = await client.query("INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email", [fullName, email, whatsapp, password]);
 
     res.status(201).json({
       message: "Registrasi berhasil!",
@@ -66,15 +71,14 @@ app.post("/register", async (req, res) => {
     if (error.code === "23505") {
       return res.status(409).json({ message: "Email sudah terdaftar." });
     }
-    // Jika ada error lain (seperti gagal koneksi/SSL)
-    res.status(500).json({ message: "Gagal memproses pendaftaran. Periksa Log Neon/Vercel." });
+    res.status(500).json({ message: "Gagal memproses pendaftaran. Error server internal." });
   } finally {
     if (client) client.release();
   }
 });
 
-// 🔥 ROUTE 2: LOGIN (Rute yang dipanggil frontend Anda)
-app.post("/login", async (req, res) => {
+// 🔥 ROUTE 2: LOGIN (Berubah ke /api/login)
+app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
 
   let client;
@@ -87,9 +91,7 @@ app.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Email atau password salah." });
     }
 
-    // 🔥 Harusnya: const passwordMatch = await bcrypt.compare(password, user.password_hash);
-    // Sekarang (sementara tanpa hash):
-    const passwordMatch = user.password_hash === password; // GANTI DENGAN LOGIKA HASH YANG BENAR
+    const passwordMatch = user.password_hash === password;
 
     if (passwordMatch) {
       return res.status(200).json({
@@ -101,10 +103,16 @@ app.post("/login", async (req, res) => {
     }
   } catch (error) {
     console.error("Login Error:", error);
-    res.status(500).json({ message: "Gagal memproses login. Error server." });
+    res.status(500).json({ message: "Gagal memproses login. Error server internal." });
   } finally {
     if (client) client.release();
   }
+});
+
+// 🔥 ROUTE PENANGANAN ERROR UMUM EXPRESS (untuk menangkap error seperti 'fsPath')
+app.use((err, req, res, next) => {
+  console.error("UNCAUGHT EXPRESS ERROR:", err.stack);
+  res.status(500).json({ message: "Internal Server Error (Backend Crash)", detail: err.message });
 });
 
 // 🔥 EXPORT HANDLER UNTUK VERSEL SERVERLESS

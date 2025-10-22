@@ -8,68 +8,55 @@ const DATABASE_URL = process.env.POSTGRES_DATABASE_URL;
 
 // --- KONFIGURASI KONEKSI DATABASE NEON ---
 if (!DATABASE_URL) {
-  console.error("FATAL ERROR: POSTGRES_DATABASE_URL tidak ditemukan.");
+  console.error("FATAL ERROR: POSTGRES_DATABASE_URL not found.");
 }
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  // 🔥 Wajib untuk Neon: Mengaktifkan SSL/TLS untuk koneksi aman
+  // Wajib untuk Neon: Mengaktifkan SSL/TLS untuk koneksi aman
   ssl: {
     rejectUnauthorized: false,
   },
 });
 
-// 🔥🔥🔥 PERBAIKAN: TEST KONEKSI OTOMATIS SAAT BOOTING (LOG LEBIH AGRESIF) 🔥🔥🔥
+// TEST KONEKSI OTOMATIS SAAT BOOTING (Untuk debugging error kredensial)
 async function testDbConnection() {
   let client;
   try {
     client = await pool.connect();
-    console.log("SUCCESS: KONEKSI DATABASE NEON BERHASIL!");
+    console.log("SUCCESS: NEON DATABASE CONNECTION SUCCESSFUL!");
   } catch (err) {
-    // 🔥🔥 LOG DI SINI AKAN MENGUNGKAP APAKAH PASSWORD SALAH 🔥🔥
+    // Log ini akan mencatat password authentication failed
     console.error("=================================================");
-    console.error("FATAL ERROR KONEKSI DB! Cek kredensial di Vercel.");
-    console.error(`Detail Error: ${err.message}`);
-    if (err.message && err.message.includes("password authentication failed")) {
-      console.error("DEBUG: KREDENSIAL DB SALAH. Password atau Username salah!");
-    } else if (err.message && err.message.includes("ECONNREFUSED")) {
-      console.error("DEBUG: Koneksi ditolak. Cek IP Allow List atau URL Host Neon.");
-    }
+    console.error("FATAL ERROR: NEON CONNECTION FAILED! Check credentials in Vercel.");
+    console.error(`Error Detail: ${err.message}`);
     console.error("=================================================");
   } finally {
     if (client) client.release();
   }
 }
-// Jalankan tes koneksi segera setelah Serverless Function dimulai
 testDbConnection();
 
-// --- KONFIGURASI CORS (Paling Permisif untuk Debugging) ---
-const corsOptions = {
-  origin: "*",
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
+// --- KONFIGURASI CORS (Middleware Express telah dihapus, CORS diatur di vercel.json) ---
 
-app.use(cors(corsOptions));
 app.use(express.json());
 
-// Logging sederhana untuk konfirmasi startup
 console.log("Aksara API Serverless Function starting...");
 
 // --- ROUTE TEST ---
-// Akses: https://aksara-api.vercel.app/api/status
+// Akses: https://aksara-api.vercel.app/
 app.get("/", (req, res) => {
   res.status(200).json({
     message: "Aksara API is running. Use /api/register for POST requests.",
     version: "1.0",
   });
 });
+// Akses: https://aksara-api.vercel.app/api/status
 app.get("/api/status", (req, res) => {
   res.status(200).json({ status: "OK", message: "API is running and ready for database connections." });
 });
 
-// 🔥 ROUTE 1: PENDAFTARAN
+// ROUTE 1: PENDAFTARAN
 app.post("/api/register", async (req, res) => {
   const { fullName, email, whatsapp, password } = req.body;
 
@@ -81,7 +68,6 @@ app.post("/api/register", async (req, res) => {
   try {
     client = await pool.connect();
 
-    // Pastikan skema pengguna sudah dibuat di Neon Console
     const result = await client.query("INSERT INTO users (full_name, email, whatsapp, password_hash) VALUES ($1, $2, $3, $4) RETURNING id, email, full_name", [fullName, email, whatsapp, password]);
 
     res.status(201).json({
@@ -89,20 +75,20 @@ app.post("/api/register", async (req, res) => {
       user: result.rows[0],
     });
   } catch (error) {
-    console.error("Database or Server Error on /register:", error);
+    console.error("Database or Server Error on /api/register:", error);
 
     if (error.code === "23505") {
       // Unique violation
       return res.status(409).json({ message: "Email sudah terdaftar." });
     }
-    // 🔥🔥 KITA MENGIRIM PESAN ERROR YANG LEBIH SPESIFIK KE KONSOL VERCEL
+    // Jika crash database lain (SSL, koneksi, dll.)
     res.status(500).json({ message: "Error server internal. Periksa kredensial DB." });
   } finally {
     if (client) client.release();
   }
 });
 
-// 🔥 ROUTE 2: LOGIN
+// ROUTE 2: LOGIN
 app.post("/api/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -134,10 +120,10 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-// 🔥 ROUTE PLACEHOLDER
+// ROUTE PLACEHOLDER untuk pengambilan data setelah login (agar dashboard tidak crash)
 app.get("/api/products", (req, res) => res.json([]));
 app.get("/api/projects", (req, res) => res.json([]));
 app.get("/api/teamMembers", (req, res) => res.json([]));
 
-// 🔥 EXPORT HANDLER UNTUK VERSEL SERVERLESS
+// EXPORT HANDLER UNTUK VERSEL SERVERLESS
 module.exports = app;
